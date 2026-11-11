@@ -1,5 +1,8 @@
 name: Build and test PGlite packages
 
+env:
+  CI_PROVIDER: l3
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -783,6 +786,7 @@ jobs:
           edit-mode: append
 
       - name: Deploy website to Netlify
+        if: github.repository == 'electric-sql/pglite'
         uses: nwtgck/actions-netlify@v4.0
         with:
           publish-dir: '/tmp/web'
@@ -795,14 +799,14 @@ jobs:
         timeout-minutes: 1
 
   changesets-release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.repository == 'electric-sql/pglite'
     permissions:
       id-token: write # Required for npm trusted publishing (OIDC)
       contents: write # to create release (changesets/action)
       issues: write # to post issue comments (changesets/action)
       pull-requests: write # to create pull request (changesets/action)
     name: Make a PR or publish
-    runs-on: ubuntu-22.04
+    runs-on: l3-ubuntu-26.04
     needs: [build-all]
     steps:
       - uses: actions/checkout@v5
@@ -919,3 +923,28 @@ jobs:
           title: 'chore: publish new package versions'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  workflow-check:
+    name: Validate workflows
+    runs-on: l3-ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+      - run: mise run check
+
+  check:
+    name: Check
+    if: always()
+    runs-on: l3-ubuntu-26.04
+    needs: [workflow-check, stylecheck, build-all, build-and-test-pglite, build-and-test-pglite-dependents, publish-website-with-demos]
+    steps:
+      - name: Require every validation, build and test job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "Required job result: $result" >&2
+              exit 1
+            fi
+          done
