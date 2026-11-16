@@ -1,0 +1,11 @@
+[tools]
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+
+[tasks.check]
+description = "Validate workflow syntax, shell commands and GitHub-hosted runner routing"
+run = ["actionlint -no-color", "pnpm exec tsx .ci/l3-routing.ts ."]
+
+[tasks.setup-hooks]
+description = "Enable the repository hooks before pushing"
+run = "pnpm exec husky"

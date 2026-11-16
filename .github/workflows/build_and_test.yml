@@ -783,6 +783,7 @@ jobs:
           edit-mode: append
 
       - name: Deploy website to Netlify
+        if: github.repository == 'electric-sql/pglite'
         uses: nwtgck/actions-netlify@v4.0
         with:
           publish-dir: '/tmp/web'
@@ -795,7 +796,7 @@ jobs:
         timeout-minutes: 1
 
   changesets-release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.repository == 'electric-sql/pglite'
     permissions:
       id-token: write # Required for npm trusted publishing (OIDC)
       contents: write # to create release (changesets/action)
@@ -919,3 +920,34 @@ jobs:
           title: 'chore: publish new package versions'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  workflow-check:
+    name: Validate workflows
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: jdx/mise-action@v3
+      - run: mise run check
+
+  check:
+    name: Check
+    if: always()
+    runs-on: ubuntu-22.04
+    needs: [workflow-check, stylecheck, build-all, build-and-test-pglite, build-and-test-pglite-dependents, publish-website-with-demos]
+    steps:
+      - name: Require every validation, build and test job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "Required job result: $result" >&2
+              exit 1
+            fi
+          done
