@@ -1,13 +1,14 @@
-#!/usr/bin/env bun
-/** Fail closed over concrete runners. This is a routing check, not proof that an EC2 instance is Spot. */
+#!/usr/bin/env -S pnpm exec tsx
+/** Fail closed over GitHub-hosted runner labels. */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { load as parseYaml } from "js-yaml";
 
 export type Plans = Record<string, unknown>;
 export const ownRunner = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
-  const label = value.match(/^l3-ubuntu-26\.04(?:-arm)?(?:-([1-9][0-9]*)core)?$/);
-  return !!label && (label[1] === undefined || Number(label[1]) <= 64);
+  return value === "ubuntu-22.04";
 };
 const object = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -50,7 +51,7 @@ export function auditWorkflow(
   const errors: string[] = [];
   let workflow: any;
   try {
-    workflow = Bun.YAML.parse(text);
+    workflow = parseYaml(text);
   } catch (error) {
     return [...errors, `${key}: invalid YAML: ${error}`];
   }
@@ -70,8 +71,8 @@ export function auditWorkflow(
   const checkEnv = (env: unknown, where: string) => {
     if (!object(env)) return;
     for (const [name, value] of Object.entries(env))
-      if (/^(CI_(PLAIN_|DYNAMIC_)?PROVIDER|TOOLS_PLAN_PROVIDER)$/.test(name) && value !== "l3")
-        errors.push(`${where}: ${name} must be literal l3`);
+      if (/^(CI_(PLAIN_|DYNAMIC_)?PROVIDER|TOOLS_PLAN_PROVIDER)$/.test(name) )
+        errors.push(`${where}: ${name} provider override is prohibited`);
   };
   checkEnv(workflow?.env, key);
   if (!object(workflow?.jobs)) return [...errors, `${key}: missing jobs`];
@@ -102,21 +103,6 @@ export function auditWorkflow(
     }
     const runner = job["runs-on"];
     if (ownRunner(runner)) continue;
-    // Reusable arch jobs can choose between exactly two own labels from a finite input enum.
-    if (
-      typeof runner === "string" &&
-      /^\$\{\{\s*inputs\.arch == 'arm64' && 'l3-ubuntu-26\.04-arm' \|\| 'l3-ubuntu-26\.04'\s*\}\}$/.test(runner)
-    )
-      continue;
-    const archChoice =
-      typeof runner === "string" &&
-      runner.match(/^\$\{\{\s*contains\(matrix\.runner, '-arm'\) && '([^']+)' \|\| '([^']+)'\s*\}\}$/);
-    if (archChoice && ownRunner(archChoice[1]) && ownRunner(archChoice[2])) continue;
-    if (
-      typeof runner === "string" &&
-      /^\$\{\{\s*matrix\.arch == 'arm64' && 'l3-ubuntu-26\.04-arm' \|\| 'l3-ubuntu-26\.04'\s*\}\}$/.test(runner)
-    )
-      continue;
     const field = typeof runner === "string" && runner.match(/^\$\{\{\s*matrix\.([A-Za-z_]\w*)\s*\}\}$/)?.[1];
     const mapped =
       typeof runner === "string" &&
@@ -126,7 +112,7 @@ export function auditWorkflow(
       continue;
     }
     if (!field) {
-      errors.push(`${where}: non-L3 or unresolved runner ${JSON.stringify(runner)}`);
+      errors.push(`${where}: non-hosted or unresolved runner ${JSON.stringify(runner)}`);
       continue;
     }
     try {
@@ -138,7 +124,7 @@ export function auditWorkflow(
       }
       const rows = entries(matrix);
       if (!rows.length || rows.some((row) => !ownRunner(row[field])))
-        throw new Error("matrix includes a non-L3 or unresolved runner");
+        throw new Error("matrix includes a non-hosted or unresolved runner");
     } catch (error) {
       errors.push(`${where}: ${error}`);
     }
@@ -177,7 +163,7 @@ export function auditTree(root: string, plans: Plans = {}): string[] {
   ];
 }
 
-if (import.meta.main) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [root = ".", planFile] = process.argv.slice(2);
   const errors = auditTree(resolve(root), planFile ? JSON.parse(readFileSync(planFile, "utf8")) : {});
   console.log(JSON.stringify({ status: errors.length ? "fail" : "pass", root: resolve(root), errors }, null, 2));

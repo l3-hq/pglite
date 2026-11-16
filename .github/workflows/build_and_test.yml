@@ -1,8 +1,5 @@
 name: Build and test PGlite packages
 
-env:
-  CI_PROVIDER: l3
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -806,7 +803,7 @@ jobs:
       issues: write # to post issue comments (changesets/action)
       pull-requests: write # to create pull request (changesets/action)
     name: Make a PR or publish
-    runs-on: l3-ubuntu-26.04
+    runs-on: ubuntu-22.04
     needs: [build-all]
     steps:
       - uses: actions/checkout@v5
@@ -926,16 +923,22 @@ jobs:
 
   workflow-check:
     name: Validate workflows
-    runs-on: l3-ubuntu-26.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - uses: jdx/mise-action@v3
       - run: mise run check
 
   check:
     name: Check
     if: always()
-    runs-on: l3-ubuntu-26.04
+    runs-on: ubuntu-22.04
     needs: [workflow-check, stylecheck, build-all, build-and-test-pglite, build-and-test-pglite-dependents, publish-website-with-demos]
     steps:
       - name: Require every validation, build and test job to succeed
