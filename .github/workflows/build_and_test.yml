@@ -303,7 +303,6 @@ jobs:
         run: pnpm build
 
       - name: Test web integrations
-        # retry on failure as web tests can be flaky
         env:
           TEST_TIMEOUT: 180000
         run: |
