@@ -8,4 +8,4 @@ run = ["actionlint -no-color", "pnpm exec tsx .ci/l3-routing.ts ."]
 
 [tasks.setup-hooks]
 description = "Enable the repository hooks before pushing"
-run = "git config core.hooksPath .husky"
+run = "pnpm exec husky"
