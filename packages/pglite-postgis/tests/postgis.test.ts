@@ -1,28 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { postgis } from '../src/index.js'
 
 describe(`postgis`, () => {
+  // One database for the file: loading the PostGIS wasm and running its extension script is the whole cost of a test,
+  // so each test cleans up its tables instead of creating its own database.
   let pg: PGlite
-  let dataDirArchive: File | Blob
-  beforeEach(async () => {
-    if (!dataDirArchive) {
-      pg = await PGlite.create({
-        extensions: { postgis },
-      })
-      dataDirArchive = await pg.dumpDataDir('gzip')
-    } else {
-      pg = await PGlite.create({
-        extensions: { postgis },
-        loadDataDir: dataDirArchive,
-      })
-    }
+  beforeAll(async () => {
+    pg = await PGlite.create({
+      extensions: { postgis },
+    })
     await pg.exec('CREATE EXTENSION IF NOT EXISTS postgis;')
   })
   afterEach(async () => {
-    if (!pg.closed) {
-      await pg.close()
-    }
+    await pg.exec(
+      'DROP TABLE IF EXISTS vehicle_location, cities, rivers CASCADE;',
+    )
+  })
+  afterAll(async () => {
+    await pg.close()
   })
 
   it('basic', async () => {
